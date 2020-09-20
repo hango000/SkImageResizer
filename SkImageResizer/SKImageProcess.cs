@@ -10,6 +10,7 @@ namespace SkImageResizer
 {
     public class SKImageProcess
     {
+
         /// <summary>
         /// 進行圖片的縮放作業
         /// </summary>
@@ -46,7 +47,11 @@ namespace SkImageResizer
             }
         }
 
-        public async Task ResizeImagesAsync(string sourcePath, string destPath, double scale)
+        public Task<List<string>> ResizeImagesAsync(string sourcePath, string destPath, double scale) {
+            return ResizeImagesAsync(sourcePath, destPath, scale, CancellationToken.None);
+        }
+
+        public async Task<List<string>> ResizeImagesAsync(string sourcePath, string destPath, double scale, CancellationToken token)
         {
             if (!Directory.Exists(destPath))
             {
@@ -55,16 +60,26 @@ namespace SkImageResizer
 
             await Task.Yield();
 
-            var allFiles = FindImages(sourcePath);
-            List<Task> taskList = new List<Task>();
-            foreach (var filePath in allFiles)
-            {
-                var tmpTask = Task.Run(() => {
-                    ResizeImageByPath(filePath, destPath, scale);
-                });
-                taskList.Add(tmpTask);
+            List<string> finishList = new List<string>();
+            try {
+                var allFiles = FindImages(sourcePath);
+                List<Task> taskList = new List<Task>();
+                int total = allFiles.Count;
+                int inx = 1;
+                foreach (var filePath in allFiles) {
+                    var tmpTask = Task.Run(() => {
+                        token.ThrowIfCancellationRequested();
+                        ResizeImageByPath(filePath, destPath, scale);
+                        inx++;
+                        finishList.Add(filePath);
+                    }, token);
+                    taskList.Add(tmpTask);
+                }
+                await Task.WhenAll(taskList.ToArray());
+            } catch (OperationCanceledException) { 
+                //不處理
             }
-            await Task.WhenAll(taskList.ToArray());
+            return finishList;
         }
 
         private void ResizeImageByPath(string filePath, string destPath, double scale) {
