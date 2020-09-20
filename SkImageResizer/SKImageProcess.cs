@@ -61,23 +61,39 @@ namespace SkImageResizer
             await Task.Yield();
 
             List<string> finishList = new List<string>();
+
+            var allFiles = FindImages(sourcePath);
+            List<Task> taskList = new List<Task>();
+            int total = allFiles.Count;
+            int inx = 1;
+            foreach (var filePath in allFiles) {
+                var tmpTask = Task.Run(() => {
+                    token.ThrowIfCancellationRequested();
+                    ResizeImageByPath(filePath, destPath, scale);
+                    inx++;
+                    finishList.Add(filePath);
+                }, token);
+                taskList.Add(tmpTask);
+            }
+
             try {
-                var allFiles = FindImages(sourcePath);
-                List<Task> taskList = new List<Task>();
-                int total = allFiles.Count;
-                int inx = 1;
-                foreach (var filePath in allFiles) {
-                    var tmpTask = Task.Run(() => {
-                        token.ThrowIfCancellationRequested();
-                        ResizeImageByPath(filePath, destPath, scale);
-                        inx++;
-                        finishList.Add(filePath);
-                    }, token);
-                    taskList.Add(tmpTask);
-                }
                 await Task.WhenAll(taskList.ToArray());
-            } catch (OperationCanceledException) { 
-                //不處理
+            } catch (Exception) {
+                foreach (var task in taskList) {
+                    switch (task.Status) {
+                        case TaskStatus.RanToCompletion:
+                            Console.WriteLine($"{task.Id}: Completion");
+                            break;
+                        case TaskStatus.Canceled:
+                            Console.WriteLine($"{task.Id}: Canceled");
+                            break;
+                        case TaskStatus.Faulted:
+                            Console.WriteLine($"{task.Id}: Faulted");
+                            break;
+                        default:
+                            break;
+                    }
+                }
             }
             return finishList;
         }
